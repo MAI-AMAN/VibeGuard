@@ -8,5 +8,5 @@ def parse_retry_after(payload: str) -> int:
     data = json.loads(payload)
     retry_after = data.get("retry_after", 0)
     if not isinstance(retry_after, (int, str)):
-        raise ValueError("retry_after must be an integer")
+        raise TypeError("retry_after must be an integer")
     return int(retry_after)

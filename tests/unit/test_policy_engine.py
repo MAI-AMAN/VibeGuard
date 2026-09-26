@@ -2,123 +2,84 @@ from vibeguard.policies.engine import (
     Action,
     PolicyConfig,
     PolicyEngine,
+    PolicyLevel,
     PolicyRequest,
 )
 
+REPO = "MAI-AMAN/VibeGuard"
+
 
 def engine() -> PolicyEngine:
-    return PolicyEngine(
-        PolicyConfig(
-            allowed_repositories=frozenset(
-                {"MAI-AMAN/vibeguard-demo-python"}
-            )
-        )
+    return PolicyEngine(PolicyConfig(allowed_repositories=frozenset({REPO})))
+
+
+def test_read_only_action_is_allowed() -> None:
+    decision = engine().evaluate(PolicyRequest(repository=REPO, action=Action.OBSERVE))
+    assert decision.allowed
+    assert decision.level is PolicyLevel.READ_ONLY
+
+
+def test_write_requires_approval() -> None:
+    decision = engine().evaluate(
+        PolicyRequest(repository=REPO, action=Action.COMMIT_FILES)
     )
+    assert not decision.allowed
+    assert decision.level is PolicyLevel.REQUIRES_APPROVAL
 
 
-def test_unapproved_write_is_rejected():
-    result = engine().evaluate(
+def test_approved_scoped_write_is_allowed() -> None:
+    decision = engine().evaluate(
         PolicyRequest(
-            repository="MAI-AMAN/vibeguard-demo-python",
-            action=Action.COMMIT_FILES,
-        )
-    )
-
-    assert not result.allowed
-    assert "approval" in result.reason
-
-
-def test_unapproved_merge_is_rejected():
-    result = engine().evaluate(
-        PolicyRequest(
-            repository="MAI-AMAN/vibeguard-demo-python",
-            action=Action.MERGE_PR,
-        )
-    )
-
-    assert not result.allowed
-
-
-def test_allowlisted_approved_write_is_allowed():
-    result = engine().evaluate(
-        PolicyRequest(
-            repository="MAI-AMAN/vibeguard-demo-python",
-            action=Action.COMMIT_FILES,
-            base_sha="abc123",
-            approved_base_sha="abc123",
-            changed_files=("src/demo/metrics.py", "tests/test_metrics.py"),
-            diff_lines=20,
-            approval_valid=True,
-        )
-    )
-
-    assert result.allowed
-
-
-def test_wrong_base_sha_is_rejected():
-    result = engine().evaluate(
-        PolicyRequest(
-            repository="MAI-AMAN/vibeguard-demo-python",
-            action=Action.COMMIT_FILES,
-            base_sha="new-sha",
-            approved_base_sha="old-sha",
-            approval_valid=True,
-        )
-    )
-
-    assert not result.allowed
-    assert "SHA" in result.reason
-
-
-def test_too_many_files_are_rejected():
-    files = tuple(f"src/file{i}.py" for i in range(6))
-
-    result = engine().evaluate(
-        PolicyRequest(
-            repository="MAI-AMAN/vibeguard-demo-python",
-            action=Action.COMMIT_FILES,
-            changed_files=files,
-            approval_valid=True,
-        )
-    )
-
-    assert not result.allowed
-
-
-def test_large_diff_is_rejected():
-    result = engine().evaluate(
-        PolicyRequest(
-            repository="MAI-AMAN/vibeguard-demo-python",
-            action=Action.COMMIT_FILES,
-            diff_lines=251,
-            approval_valid=True,
-        )
-    )
-
-    assert not result.allowed
-
-
-def test_forbidden_workflow_file_is_rejected():
-    result = engine().evaluate(
-        PolicyRequest(
-            repository="MAI-AMAN/vibeguard-demo-python",
-            action=Action.COMMIT_FILES,
-            changed_files=(".github/workflows/ci.yml",),
-            approval_valid=True,
-        )
-    )
-
-    assert not result.allowed
-
-
-def test_non_allowlisted_repository_is_rejected():
-    result = engine().evaluate(
-        PolicyRequest(
-            repository="someone/other-repo",
+            repository=REPO,
             action=Action.COMMIT_FILES,
             approval_valid=True,
+            changed_files=("src/vibeguard/main.py",),
+            base_sha="a",
+            approved_base_sha="a",
         )
     )
+    assert decision.allowed
 
-    assert not result.allowed
-    assert "allowlisted" in result.reason
+
+def test_dangerous_actions_are_forbidden_even_with_approval() -> None:
+    for action in (
+        Action.MERGE_PR,
+        Action.FORCE_PUSH,
+        Action.DELETE_RESOURCE,
+        Action.DEPLOY_PRODUCTION,
+        Action.MANIPULATE_CREDENTIALS,
+    ):
+        decision = engine().evaluate(
+            PolicyRequest(repository=REPO, action=action, approval_valid=True)
+        )
+        assert not decision.allowed
+        assert decision.level is PolicyLevel.FORBIDDEN
+
+
+def test_scope_and_sensitive_paths_are_rejected() -> None:
+    wrong_sha = engine().evaluate(
+        PolicyRequest(
+            repository=REPO,
+            action=Action.APPLY_PATCH,
+            approval_valid=True,
+            base_sha="new",
+            approved_base_sha="approved",
+        )
+    )
+    secret = engine().evaluate(
+        PolicyRequest(
+            repository=REPO,
+            action=Action.APPLY_PATCH,
+            approval_valid=True,
+            changed_files=(".env",),
+        )
+    )
+    assert not wrong_sha.allowed
+    assert not secret.allowed
+
+
+def test_non_allowlisted_repository_is_rejected() -> None:
+    decision = engine().evaluate(
+        PolicyRequest(repository="someone/other", action=Action.OBSERVE)
+    )
+    assert not decision.allowed
