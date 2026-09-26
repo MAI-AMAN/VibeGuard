@@ -1,103 +1,54 @@
+"""Explicit, fail-closed VibeGuard workflow state machine."""
+
 from enum import StrEnum
 
 
 class State(StrEnum):
-    RECEIVED = "received"
-    GATHERING_CONTEXT = "gathering_context"
-    ANALYZED = "analyzed"
-    REPRODUCING = "reproducing"
-    REPRODUCED = "reproduced"
-    PROPOSED = "proposed"
-    AWAITING_APPROVAL = "awaiting_approval"
-    EXECUTING = "executing"
-    VERIFYING = "verifying"
-    AWAITING_SHIP_APPROVAL = "awaiting_ship_approval"
-    SHIPPING = "shipping"
-    COMPLETED = "completed"
-
-    NEEDS_MORE_INFORMATION = "needs_more_information"
-    DENIED = "denied"
-    FAILED = "failed"
+    IDLE = "IDLE"
+    OBSERVING = "OBSERVING"
+    ANALYZING = "ANALYZING"
+    COLLECTING_EVIDENCE = "COLLECTING_EVIDENCE"
+    REPRODUCING = "REPRODUCING"
+    WAITING_FOR_REMEDIATION_APPROVAL = "WAITING_FOR_REMEDIATION_APPROVAL"
+    GENERATING_PATCH = "GENERATING_PATCH"
+    WAITING_FOR_PATCH_APPROVAL = "WAITING_FOR_PATCH_APPROVAL"
+    VERIFYING = "VERIFYING"
+    WAITING_FOR_SHIPMENT_APPROVAL = "WAITING_FOR_SHIPMENT_APPROVAL"
+    SHIPPING = "SHIPPING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
 
 
-TERMINAL_STATES = {
-    State.COMPLETED,
-    State.NEEDS_MORE_INFORMATION,
-    State.DENIED,
-    State.FAILED,
-}
-
-
-TRANSITIONS: dict[State, set[State]] = {
-    State.RECEIVED: {
-        State.GATHERING_CONTEXT,
-        State.NEEDS_MORE_INFORMATION,
-        State.FAILED,
-    },
-    State.GATHERING_CONTEXT: {
-        State.ANALYZED,
-        State.NEEDS_MORE_INFORMATION,
-        State.FAILED,
-    },
-    State.ANALYZED: {
-        State.REPRODUCING,
-        State.NEEDS_MORE_INFORMATION,
-        State.FAILED,
-    },
-    State.REPRODUCING: {
-        State.REPRODUCED,
-        State.NEEDS_MORE_INFORMATION,
-        State.FAILED,
-    },
-    State.REPRODUCED: {
-        State.PROPOSED,
-        State.NEEDS_MORE_INFORMATION,
-        State.FAILED,
-    },
-    State.PROPOSED: {
-        State.AWAITING_APPROVAL,
-        State.NEEDS_MORE_INFORMATION,
-        State.FAILED,
-    },
-    State.AWAITING_APPROVAL: {
-        State.EXECUTING,
-        State.DENIED,
-        State.FAILED,
-    },
-    State.EXECUTING: {
-        State.VERIFYING,
-        State.FAILED,
-    },
-    State.VERIFYING: {
-        State.AWAITING_SHIP_APPROVAL,
-        State.FAILED,
-    },
-    State.AWAITING_SHIP_APPROVAL: {
-        State.SHIPPING,
-        State.DENIED,
-        State.FAILED,
-    },
-    State.SHIPPING: {
-        State.COMPLETED,
-        State.FAILED,
-    },
-    State.COMPLETED: set(),
-    State.NEEDS_MORE_INFORMATION: set(),
-    State.DENIED: set(),
-    State.FAILED: set(),
+TRANSITIONS: dict[State, frozenset[State]] = {
+    State.IDLE: frozenset({State.OBSERVING, State.FAILED}),
+    State.OBSERVING: frozenset({State.ANALYZING, State.FAILED}),
+    State.ANALYZING: frozenset(
+        {State.COLLECTING_EVIDENCE, State.COMPLETED, State.FAILED}
+    ),
+    State.COLLECTING_EVIDENCE: frozenset({State.REPRODUCING, State.FAILED}),
+    State.REPRODUCING: frozenset(
+        {State.WAITING_FOR_REMEDIATION_APPROVAL, State.FAILED}
+    ),
+    State.WAITING_FOR_REMEDIATION_APPROVAL: frozenset(
+        {State.GENERATING_PATCH, State.FAILED}
+    ),
+    State.GENERATING_PATCH: frozenset({State.WAITING_FOR_PATCH_APPROVAL, State.FAILED}),
+    State.WAITING_FOR_PATCH_APPROVAL: frozenset({State.VERIFYING, State.FAILED}),
+    State.VERIFYING: frozenset({State.WAITING_FOR_SHIPMENT_APPROVAL, State.FAILED}),
+    State.WAITING_FOR_SHIPMENT_APPROVAL: frozenset({State.SHIPPING, State.FAILED}),
+    State.SHIPPING: frozenset({State.COMPLETED, State.FAILED}),
+    State.COMPLETED: frozenset(),
+    State.FAILED: frozenset(),
 }
 
 
 def can_transition(current: State, target: State) -> bool:
-    """Return whether a state transition is explicitly allowed."""
     return target in TRANSITIONS[current]
 
 
 def transition(current: State, target: State) -> State:
-    """Perform a validated state transition."""
     if not can_transition(current, target):
         raise ValueError(
             f"Illegal VibeGuard transition: {current.value} -> {target.value}"
         )
-
     return target
