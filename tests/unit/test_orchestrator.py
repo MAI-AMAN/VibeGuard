@@ -114,3 +114,19 @@ def test_real_shipment_result_completes_run(tmp_path: Path) -> None:
     )
     assert run.state is State.COMPLETED
     assert run.shipment and run.shipment["pull_request_url"].endswith("/1")
+
+
+def test_failed_external_shipment_is_reported_honestly(tmp_path: Path) -> None:
+    flow = Orchestrator(repo(tmp_path))
+    run = flow.generate_patch(flow.audit().run_id, True)
+    with patch.object(
+        VerificationEngine,
+        "verify",
+        return_value=VerificationResult(passed=True, checks=[check()]),
+    ):
+        run = flow.verify(run.run_id, True)
+    run = flow.ship(run.run_id, True)
+    run = flow.record_shipment_failure(run.run_id, "permission denied")
+    assert run.state is State.FAILED
+    assert run.shipment and run.shipment["status"] == "FAILED"
+    assert "permission denied" in (run.error or "")

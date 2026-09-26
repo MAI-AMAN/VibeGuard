@@ -146,6 +146,16 @@ class Orchestrator:
         self.store.move(run, State.COMPLETED, "GitHub pull request created")
         return run
 
+    def record_shipment_failure(self, run_id: str, reason: str) -> AuditRun:
+        """Record an external provider failure without fabricating completion."""
+        run = self.store.load(run_id)
+        self._require_state(run, State.SHIPPING)
+        run.shipment = {"status": "FAILED", "reason": reason}
+        run.error = f"GitHub shipment failed: {reason}"
+        self.store.save(run)
+        self.store.move(run, State.FAILED, run.error)
+        return run
+
     @staticmethod
     def _require_state(run: AuditRun, expected: State) -> None:
         if run.state is not expected:
