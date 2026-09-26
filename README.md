@@ -102,8 +102,9 @@ Use `--repo /path/to/repository` before the subcommand to target another local G
 
 ## Demo
 
-The repository includes `examples/demo_fragile.py`, an explicitly labelled deterministic demo
-fixture. It contains a real missing-field failure; results are not mocked.
+The repository includes `examples/demo_candidate.py`, an explicitly labelled deterministic demo
+target. It contains a real missing-field failure; results are not mocked. Each shipped repair can
+be retained as evidence while a fresh labelled candidate keeps the audit demonstration repeatable.
 
 ```bash
 uv run vibeguard audit
